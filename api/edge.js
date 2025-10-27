@@ -3,16 +3,15 @@ export const config = {
 }
 
 // 🚨 PASTE YOUR GOOGLE CHAT WEBHOOK URL HERE 🚨
-// This is the URL from your Google Chat space (Apps & Integrations > Webhooks)
 const GOOGLE_CHAT_WEBHOOK_URL = 'https://chat.googleapis.com/v1/spaces/AAQAzttXdrU/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=1jB4QDpJsfUaVdHPMfhfpTwbEOzzGmJei3Jr4DbO3FU';
 
 
 // --- Helper Function to Extract Message ---
 function extractLatestUserMessage(payload) {
     const breadcrumbValues = payload.event.breadcrumbs?.values;
-    let latestUserMessage = "Message not found or N/A.";
+    let latestUserMessage = "N/A"; // Default if message is not found
 
-    if (ArrayOfObjectsExists(breadcrumbValues)) {
+    if (Array.isArray(breadcrumbValues) && breadcrumbValues.length > 0) {
         const lastBreadcrumb = breadcrumbValues[breadcrumbValues.length - 1];
         const message = lastBreadcrumb.message;
         const category = lastBreadcrumb.category;
@@ -32,13 +31,7 @@ function extractLatestUserMessage(payload) {
     return latestUserMessage;
 }
 
-// Helper to check for array existence and length
-function ArrayOfObjectsExists(arr) {
-    return Array.isArray(arr) && arr.length > 0;
-}
 
-
-// --- MAIN HANDLER ---
 export default async (req) => {
     if (req.method !== 'POST') {
         return new Response('Method Not Allowed', { status: 405 });
@@ -47,63 +40,33 @@ export default async (req) => {
     try {
         const body = await req.json();
         
-        // 1. EXTRACT DATA
+        // 1. EXTRACT REQUIRED DATA
         const userMessage = extractLatestUserMessage(body);
 
-        const issueUrl = body.url;
+        // Safely extract core Sentry data
         const userEmail = body.event?.user?.email || 'Unknown User';
         const projectSlug = body.project_slug;
-        const environment = body.event?.environment || 'N/A';
+        const release = body.event?.release || 'N/A';
+        const issueUrl = body.url;
 
 
-        // --- CONSTRUCT GOOGLE CHAT MESSAGE (Card Format) ---
+        // --- CONSTRUCT SIMPLE GOOGLE CHAT MESSAGE ---
+        let chatMessage = `**New Customer Report in ${projectSlug.toUpperCase()}**\n\n`;
+        chatMessage += `**Release:** ${release}\n`;
+        chatMessage += `**User Email:** ${userEmail}\n`;
+        
+        // Add the optional message only if it was found
+        if (userMessage !== "N/A") {
+             chatMessage += `**User Message:** ${userMessage}\n`;
+        }
+
+        chatMessage += `\n[View Issue Details in Sentry](${issueUrl})`;
+
         const chatPayload = {
-            // Using a text fallback for quick notification visibility
-            text: `🚨 New Customer Report from ${userEmail} in ${projectSlug}!`,
-            
-            // Using cards for a rich, actionable message (Google Chat standard)
-            cardsV2: [
-                {
-                    cardId: "sentry-report-card",
-                    card: {
-                        header: {
-                            title: `🚨 New Customer Issue Report - ${projectSlug.toUpperCase()}`,
-                            subtitle: `User: ${userEmail}`,
-                            imageUrl: "https://sentry.io/images/sentry-logo.png"
-                        },
-                        sections: [
-                            {
-                                widgets: [
-                                    {
-                                        textParagraph: { 
-                                            text: `**Environment:** ${environment} | **Sentry ID:** ${body.id}` 
-                                        }
-                                    },
-                                    {
-                                        // The core user message content
-                                        textParagraph: { 
-                                            text: `**User's Message:**\n${userMessage || "No message provided."}`
-                                        }
-                                    },
-                                    {
-                                        buttonList: {
-                                            buttons: [
-                                                {
-                                                    text: "View Full Issue in Sentry",
-                                                    onClick: {
-                                                        openLink: { url: issueUrl }
-                                                    }
-                                                }
-                                            ]
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
+            text: chatMessage
         };
+        // -------------------------------------------
+
 
         // 2. SEND MESSAGE TO GOOGLE CHAT
         const response = await fetch(GOOGLE_CHAT_WEBHOOK_URL, {
@@ -116,17 +79,16 @@ export default async (req) => {
 
         // 3. RESPOND TO SENTRY
         if (response.ok) {
-            console.log(`[SUCCESS] Message sent to Google Chat for issue: ${body.id}`);
-            return new Response('Webhook processed, message sent to Google Chat.', { status: 200 });
+            // Note: Returning 200 to Sentry is essential for success
+            return new Response('Webhook processed, simple message sent to Google Chat.', { status: 200 });
         } else {
             console.error(`[ERROR] Failed to send message to Google Chat. Status: ${response.status}`);
-            // Still return 200 to Sentry to prevent webhook retries, as the issue is with Google Chat, not Sentry's payload.
             return new Response('Processed Sentry payload, but failed to notify Google Chat.', { status: 200 });
         }
 
     } catch (err) {
-        // Log the error and return a 400 or 500 status to prevent Sentry retries if the payload is invalid.
         console.error('Error processing webhook:', err);
+        // Return 500 status for internal error/invalid payload to alert Vercel/prevent Sentry retries
         return new Response(`Server error: ${err.message}`, { status: 500 });
     }
 };
