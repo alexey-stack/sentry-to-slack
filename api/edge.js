@@ -50,22 +50,50 @@ export default async (req) => {
         const issueUrl = body.url;
 
 
-        // --- CONSTRUCT SIMPLE GOOGLE CHAT MESSAGE ---
-        let chatMessage = `**New Customer Report in ${projectSlug.toUpperCase()}**\n\n`;
-        chatMessage += `**Release:** ${release}\n`;
-        chatMessage += `**User Email:** ${userEmail}\n`;
+        // --- CONSTRUCT GOOGLE CHAT MESSAGE (Simple Card Structure) ---
+        // Using <br> for line breaks and <b> for bolding, as required by Chat Cards.
+        let cardText = `<b>New Customer Report in ${projectSlug.toUpperCase()}</b><br>`;
+        cardText += `<b>Release:</b> ${release}<br>`;
+        cardText += `<b>User Email:</b> ${userEmail}<br>`;
         
         // Add the optional message only if it was found
         if (userMessage !== "N/A") {
-             chatMessage += `**User Message:** ${userMessage}\n`;
+             cardText += `<b>User Message:</b> ${userMessage}<br>`;
         }
 
-        chatMessage += `\n[View Issue Details in Sentry](${issueUrl})`;
-
         const chatPayload = {
-            text: chatMessage
+            cardsV2: [
+                {
+                    cardId: "simple-sentry-alert",
+                    card: {
+                        sections: [
+                            {
+                                widgets: [
+                                    {
+                                        textParagraph: { 
+                                            text: cardText 
+                                        }
+                                    },
+                                    {
+                                        buttonList: {
+                                            buttons: [
+                                                {
+                                                    text: "VIEW ISSUE",
+                                                    onClick: {
+                                                        openLink: { url: issueUrl }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
         };
-        // -------------------------------------------
+        // -----------------------------------------------------------
 
 
         // 2. SEND MESSAGE TO GOOGLE CHAT
@@ -79,8 +107,7 @@ export default async (req) => {
 
         // 3. RESPOND TO SENTRY
         if (response.ok) {
-            // Note: Returning 200 to Sentry is essential for success
-            return new Response('Webhook processed, simple message sent to Google Chat.', { status: 200 });
+            return new Response('Webhook processed, message sent to Google Chat.', { status: 200 });
         } else {
             console.error(`[ERROR] Failed to send message to Google Chat. Status: ${response.status}`);
             return new Response('Processed Sentry payload, but failed to notify Google Chat.', { status: 200 });
@@ -88,7 +115,6 @@ export default async (req) => {
 
     } catch (err) {
         console.error('Error processing webhook:', err);
-        // Return 500 status for internal error/invalid payload to alert Vercel/prevent Sentry retries
         return new Response(`Server error: ${err.message}`, { status: 500 });
     }
 };
