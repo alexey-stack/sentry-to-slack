@@ -3,8 +3,7 @@ export const config = {
 }
 
 // 🚨 PASTE YOUR GOOGLE CHAT WEBHOOK URL HERE 🚨
-const GOOGLE_CHAT_WEBHOOK_URL = 'https://chat.googleapis.com/v1/spaces/AAQAzttXdrU/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=1jB4QDpJsfUaVdHPMfhfpTwbEOzzGmJei3Jr4DbO3FU';
-
+const GOOGLE_CHAT_WEBHOOK_URL = process.env.GOOGLE_CHAT_WEBHOOK_URL;
 
 // --- Helper Function to Extract Message ---
 function extractLatestUserMessage(payload) {
@@ -52,13 +51,12 @@ export default async (req) => {
 
         // --- CONSTRUCT GOOGLE CHAT MESSAGE (Simple Card Structure) ---
         // Using <br> for line breaks and <b> for bolding, as required by Chat Cards.
-        let cardText = `<b>New Customer Report in ${projectSlug.toUpperCase()}</b><br>`;
-        cardText += `<b>Release:</b> ${release}<br>`;
-        cardText += `<b>User Email:</b> ${userEmail}<br>`;
+        let cardText = `<b>Release:</b> ${release}<br>`;
+        cardText += `<b>Email:</b> ${userEmail}<br>`;
         
         // Add the optional message only if it was found
         if (userMessage !== "N/A") {
-             cardText += `<b>User Message:</b> ${userMessage}<br>`;
+             cardText += `<b>Message:</b> ${userMessage}<br>`;
         }
 
         const chatPayload = {
